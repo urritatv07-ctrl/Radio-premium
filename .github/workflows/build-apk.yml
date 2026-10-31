@@ -1,5 +1,8 @@
-      - name: Preparar Android
-        uses: android-actions/setup-android@v3
+      -       - name: Preparar Android
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -1)
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Instalar herramientas Android
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
