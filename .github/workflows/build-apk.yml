@@ -1,11 +1,10 @@
 
-
-name: Crear Radio Premium APK
+name: Radio Premium APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main, principal]
+    branches: [main]
 
 jobs:
   build:
@@ -20,26 +19,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar Gradle
+      - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Extraer proyecto
+      - name: Extraer archivos
         run: |
-          mkdir proyecto
           unzip -q Radio_Premium_Proyecto_Android.zip -d proyecto
-
-      - name: Compilar APK
-        run: |
           DIR=$(find proyecto -name settings.gradle.kts -o -name settings.gradle | head -1 | xargs dirname)
-          test -n "$DIR"
-          gradle -p "$DIR" assembleDebug
-          mkdir salida
-          find "$DIR" -name app-debug.apk -exec cp {} salida/Radio-Premium.apk \;
+          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+
+      - name: Crear APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-Premium-APK
-          path: salida/Radio-Premium.apk
+          name: Radio-Premium
+          path: proyecto/**/build/outputs/apk/debug/*.apk
