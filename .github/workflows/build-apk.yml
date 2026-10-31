@@ -1,40 +1,48 @@
-
-name: Radio Premium APK
+name: Construir Radio Premium APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Descargar proyecto
+      - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Instalar Java
+      - name: Preparar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Preparar Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Preparar Android
+        uses: android-actions/setup-android@v3
 
-      - name: Extraer archivos
+      - name: Descomprimir proyecto
         run: |
-          unzip -q Radio_Premium_Proyecto_Android.zip -d proyecto
-          DIR=$(find proyecto -name settings.gradle.kts -o -name settings.gradle | head -1 | xargs dirname)
-          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+          mkdir -p proyecto
+          unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
+          find proyecto -type f | head -50
 
-      - name: Crear APK
-        run: gradle -p "$PROJECT_DIR" assembleDebug
+      - name: Compilar APK
+        run: |
+          cd proyecto
+          GRADLE_FILE=$(find . -name gradlew -type f | head -1)
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "No se encontró gradlew dentro del ZIP"
+            exit 1
+          fi
+          cd "$(dirname "$GRADLE_FILE")"
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Radio-Premium
+          name: Radio-Premium-APK
           path: proyecto/**/build/outputs/apk/debug/*.apk
