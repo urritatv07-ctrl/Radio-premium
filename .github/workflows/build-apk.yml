@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   build:
-    name: Compilar APK Android
     runs-on: ubuntu-latest
 
     steps:
@@ -25,20 +24,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar herramientas
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip
-
-      - name: Comprobar archivo ZIP
-        run: |
-          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
-            echo "::error::No se encontró Radio_Premium_Proyecto_Android.zip en la raíz del repositorio."
-            exit 1
-          fi
+      - name: Preparar Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
 
       - name: Descomprimir proyecto
         run: |
+          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
+            echo "::error::No se encontró el archivo ZIP."
+            exit 1
+          fi
+
           rm -rf proyecto
           mkdir -p proyecto
           unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
@@ -46,61 +43,61 @@ jobs:
       - name: Detectar proyecto Android
         id: android
         run: |
-          GRADLE_FILE=$(find proyecto -type f \( \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" \
+          SETTINGS=$(find proyecto -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
           \) | head -n 1)
 
-          if [ -n "$GRADLE_FILE" ]; then
-            PROJECT_DIR=$(dirname "$GRADLE_FILE")
+          if [ -n "$SETTINGS" ]; then
+            DIR=$(dirname "$SETTINGS")
           else
-            GRADLE_FILE=$(find proyecto -type f \( \
-              -name "build.gradle" -o \
-              -name "build.gradle.kts" \
+            BUILD=$(find proyecto -type f \( \
+              -name build.gradle \
+              -o -name build.gradle.kts \
             \) | head -n 1)
 
-            if [ -z "$GRADLE_FILE" ]; then
-              echo "::error::No se encontró un proyecto Gradle."
+            if [ -z "$BUILD" ]; then
+              echo "::error::No se encontró build.gradle."
               exit 1
             fi
 
-            PROJECT_DIR=$(dirname "$GRADLE_FILE")
+            DIR=$(dirname "$BUILD")
           fi
 
-          echo "Proyecto encontrado en: $PROJECT_DIR"
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "project_dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Proyecto: $DIR"
 
-      - name: Configurar Gradle Wrapper
+      - name: Crear Gradle Wrapper si falta
         working-directory: ${{ steps.android.outputs.project_dir }}
         run: |
-          if [ ! -f "gradlew" ]; then
-            echo "::error::No existe gradlew. El proyecto debe incluir Gradle Wrapper."
-            exit 1
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "Generando Gradle Wrapper..."
+            gradle wrapper --gradle-version 8.7
           fi
 
           chmod +x gradlew
 
-      - name: Compilar APK Debug
+      - name: Compilar Radio Premium
         working-directory: ${{ steps.android.outputs.project_dir }}
         run: |
-          ./gradlew --no-daemon clean assembleDebug --stacktrace
+          ./gradlew --no-daemon assembleDebug --stacktrace
 
-      - name: Verificar APK generado
+      - name: Buscar APK
         run: |
           mkdir -p apk-final
 
-          find proyecto -type f -path "*/build/outputs/apk/debug/*.apk" \
+          find proyecto -type f \
+            -path "*/build/outputs/apk/debug/*.apk" \
             -exec cp {} apk-final/ \;
 
           if [ -z "$(find apk-final -name '*.apk' -type f)" ]; then
-            echo "::error::No se generó ningún archivo APK."
+            echo "::error::No se generó el APK."
             exit 1
           fi
 
-          echo "APK generado correctamente:"
           ls -lh apk-final/
 
-      - name: Guardar APK
+      - name: Descargar APK generado
         uses: actions/upload-artifact@v4
         with:
           name: Radio-Premium-APK
