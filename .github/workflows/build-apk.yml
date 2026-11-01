@@ -1,4 +1,3 @@
-
 name: Crear Radio Premium APK
 
 on:
@@ -24,35 +23,44 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar Gradle 8.7
+      - name: Instalar Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.9'
 
-      - name: Descomprimir proyecto
+      - name: Descomprimir proyecto Android
         run: |
+          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
+            echo "::error::No se encontró Radio_Premium_Proyecto_Android.zip"
+            exit 1
+          fi
+
+          rm -rf proyecto
+          mkdir -p proyecto
           unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
 
       - name: Localizar proyecto Android
         id: android
         run: |
-          DIR=$(find proyecto -type f \
+          SETTINGS=$(find proyecto -type f \
             \( -name settings.gradle.kts -o -name settings.gradle \) \
-            -print -quit | xargs dirname)
+            -print -quit)
 
-          if [ -z "$DIR" ] || [ "$DIR" = "." ]; then
-            echo "::error::No se encontró la raíz Android."
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::No se encontró settings.gradle ni settings.gradle.kts"
             exit 1
           fi
 
+          DIR=$(dirname "$SETTINGS")
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Proyecto Android encontrado en: $DIR"
 
       - name: Compilar APK
         working-directory: ${{ steps.android.outputs.dir }}
         run: |
           gradle --no-daemon assembleDebug --stacktrace
 
-      - name: Preparar APK
+      - name: Buscar APK generado
         run: |
           mkdir -p apk-final
 
@@ -61,9 +69,11 @@ jobs:
             -exec cp {} apk-final/ \;
 
           if ! ls apk-final/*.apk >/dev/null 2>&1; then
-            echo "::error::No se encontró el APK."
+            echo "::error::La compilación terminó sin generar un APK."
             exit 1
           fi
+
+          ls -lh apk-final/
 
       - name: Publicar APK
         uses: actions/upload-artifact@v4
