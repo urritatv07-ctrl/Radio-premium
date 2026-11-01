@@ -19,54 +19,37 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.7
+          cache: 'gradle'
 
       - name: Descomprimir proyecto
         run: |
-          ls -lh
           if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
-            echo "❌ ERROR: No se encontró 'Radio_Premium_Proyecto_Android.zip' en la raíz del repositorio."
-            echo "Por favor, sube el archivo con ese nombre exacto."
+            echo "❌ ERROR: No se encontró el archivo 'Radio_Premium_Proyecto_Android.zip' en la raíz."
             exit 1
           fi
           rm -rf proyecto
           unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
-          
-          echo "=== Estructura detectada ==="
-          find proyecto -maxdepth 3 -type f
 
       - name: Compilar APK
         run: |
-          # Busca la carpeta raíz real donde está el build.gradle principal
+          # Encuentra automáticamente la raíz donde está el build.gradle principal
           GRADLE_DIR=$(find proyecto -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
           
           if [ -z "$GRADLE_DIR" ]; then
-            echo "❌ ERROR: No se encontró ningún archivo build.gradle dentro del proyecto."
+            echo "❌ ERROR: No se encontró ningún archivo build.gradle dentro del ZIP."
             exit 1
           fi
           
-          echo "-> Entrando al directorio del proyecto: $GRADLE_DIR"
           cd "$GRADLE_DIR"
           
-          # Verifica o genera el Gradle Wrapper en la ruta correcta
-          if [ -f "./gradlew" ]; then
-            echo "-> Optimizando permisos de gradlew existente..."
-            chmod +x ./gradlew
-          else
-            echo "-> No se encontró gradlew, generando wrapper temporal con Gradle 8.7..."
-            gradle wrapper --gradle-version 8.7
-            chmod +x ./gradlew
+          # Corrige permisos de ejecución de scripts y genera wrapper si falta
+          if [ ! -f "./gradlew" ]; then
+            echo "-> Creando Gradle Wrapper..."
+            gradle wrapper
           fi
+          chmod +x ./gradlew
           
-          # Ejecuta la compilación de la app
-          echo "-> Iniciando compilación de la aplicación..."
+          # Compilación limpia
           ./gradlew assembleDebug --stacktrace
 
       - name: Guardar APK
