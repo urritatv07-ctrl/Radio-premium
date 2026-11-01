@@ -18,86 +18,54 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Preparar Java 17
+      - name: Instalar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Preparar Gradle 8.7
+      - name: Instalar Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
       - name: Descomprimir proyecto
         run: |
-          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
-            echo "::error::No se encontró el archivo ZIP."
+          unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
+
+      - name: Localizar proyecto Android
+        id: android
+        run: |
+          DIR=$(find proyecto -type f \
+            \( -name settings.gradle.kts -o -name settings.gradle \) \
+            -print -quit | xargs dirname)
+
+          if [ -z "$DIR" ] || [ "$DIR" = "." ]; then
+            echo "::error::No se encontró la raíz Android."
             exit 1
           fi
 
-          rm -rf proyecto
-          mkdir -p proyecto
-          unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
 
-      - name: Detectar proyecto Android
-        id: android
+      - name: Compilar APK
+        working-directory: ${{ steps.android.outputs.dir }}
         run: |
-          SETTINGS=$(find proyecto -type f \( \
-            -name settings.gradle \
-            -o -name settings.gradle.kts \
-          \) | head -n 1)
+          gradle --no-daemon assembleDebug --stacktrace
 
-          if [ -n "$SETTINGS" ]; then
-            DIR=$(dirname "$SETTINGS")
-          else
-            BUILD=$(find proyecto -type f \( \
-              -name build.gradle \
-              -o -name build.gradle.kts \
-            \) | head -n 1)
-
-            if [ -z "$BUILD" ]; then
-              echo "::error::No se encontró build.gradle."
-              exit 1
-            fi
-
-            DIR=$(dirname "$BUILD")
-          fi
-
-          echo "project_dir=$DIR" >> "$GITHUB_OUTPUT"
-          echo "Proyecto: $DIR"
-
-      - name: Crear Gradle Wrapper si falta
-        working-directory: ${{ steps.android.outputs.project_dir }}
-        run: |
-          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
-            echo "Generando Gradle Wrapper..."
-            gradle wrapper --gradle-version 8.7
-          fi
-
-          chmod +x gradlew
-
-      - name: Compilar Radio Premium
-        working-directory: ${{ steps.android.outputs.project_dir }}
-        run: |
-          ./gradlew --no-daemon assembleDebug --stacktrace
-
-      - name: Buscar APK
+      - name: Preparar APK
         run: |
           mkdir -p apk-final
 
           find proyecto -type f \
-            -path "*/build/outputs/apk/debug/*.apk" \
+            -path '*/build/outputs/apk/debug/*.apk' \
             -exec cp {} apk-final/ \;
 
-          if [ -z "$(find apk-final -name '*.apk' -type f)" ]; then
-            echo "::error::No se generó el APK."
+          if ! ls apk-final/*.apk >/dev/null 2>&1; then
+            echo "::error::No se encontró el APK."
             exit 1
           fi
 
-          ls -lh apk-final/
-
-      - name: Descargar APK generado
+      - name: Publicar APK
         uses: actions/upload-artifact@v4
         with:
           name: Radio-Premium-APK
