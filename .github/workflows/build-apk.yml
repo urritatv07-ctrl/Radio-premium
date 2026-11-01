@@ -17,7 +17,7 @@ jobs:
       - name: Preparar Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Preparar Android SDK
@@ -32,36 +32,45 @@ jobs:
         run: |
           ls -lh
           if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
-            echo "ERROR: No está el zip en la raíz del repo"
-            echo "Sube el zip con ese nombre exacto"
+            echo "❌ ERROR: No se encontró 'Radio_Premium_Proyecto_Android.zip' en la raíz del repositorio."
+            echo "Por favor, sube el archivo con ese nombre exacto."
             exit 1
           fi
           rm -rf proyecto
           unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
+          
+          echo "=== Estructura detectada ==="
           find proyecto -maxdepth 3 -type f
 
       - name: Compilar APK
         run: |
-          cd proyecto
-          # Si hay gradlew lo usa, si no, usa gradle del sistema
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew assembleDebug --stacktrace
-          elif [ -f "app/gradlew" ]; then
-            chmod +x app/gradlew
-            cd app && ./gradlew assembleDebug --stacktrace
-          else
-            echo "No hay gradlew, compilando con gradle global"
-            # Crea wrapper temporal si falta
-            gradle wrapper --gradle-version 8.7
-            ./gradlew assembleDebug --stacktrace
+          # Busca la carpeta raíz real donde está el build.gradle principal
+          GRADLE_DIR=$(find proyecto -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
+          
+          if [ -z "$GRADLE_DIR" ]; then
+            echo "❌ ERROR: No se encontró ningún archivo build.gradle dentro del proyecto."
+            exit 1
           fi
+          
+          echo "-> Entrando al directorio del proyecto: $GRADLE_DIR"
+          cd "$GRADLE_DIR"
+          
+          # Verifica o genera el Gradle Wrapper en la ruta correcta
+          if [ -f "./gradlew" ]; then
+            echo "-> Optimizando permisos de gradlew existente..."
+            chmod +x ./gradlew
+          else
+            echo "-> No se encontró gradlew, generando wrapper temporal con Gradle 8.7..."
+            gradle wrapper --gradle-version 8.7
+            chmod +x ./gradlew
+          fi
+          
+          # Ejecuta la compilación de la app
+          echo "-> Iniciando compilación de la aplicación..."
+          ./gradlew assembleDebug --stacktrace
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: Radio-Premium-APK
-          path: |
-            proyecto/app/build/outputs/apk/debug/*.apk
-            proyecto/**/build/outputs/apk/debug/*.apk
-            proyecto/build/outputs/apk/debug/*.apk
+          path: proyecto/**/build/outputs/apk/debug/*.apk
