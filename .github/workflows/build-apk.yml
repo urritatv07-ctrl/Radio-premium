@@ -1,3 +1,4 @@
+
 name: Crear Radio Premium APK
 
 on:
@@ -6,8 +7,12 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Compilar APK Android
     runs-on: ubuntu-latest
 
     steps:
@@ -17,43 +22,88 @@ jobs:
       - name: Preparar Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
-          cache: 'gradle'
+
+      - name: Instalar herramientas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+
+      - name: Comprobar archivo ZIP
+        run: |
+          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
+            echo "::error::No se encontró Radio_Premium_Proyecto_Android.zip en la raíz del repositorio."
+            exit 1
+          fi
 
       - name: Descomprimir proyecto
         run: |
-          if [ ! -f "Radio_Premium_Proyecto_Android.zip" ]; then
-            echo "❌ ERROR: No se encontró el archivo 'Radio_Premium_Proyecto_Android.zip' en la raíz."
-            exit 1
-          fi
           rm -rf proyecto
+          mkdir -p proyecto
           unzip -o Radio_Premium_Proyecto_Android.zip -d proyecto
 
-      - name: Compilar APK
+      - name: Detectar proyecto Android
+        id: android
         run: |
-          # Encuentra automáticamente la raíz donde está el build.gradle principal
-          GRADLE_DIR=$(find proyecto -name "build.gradle" -o -name "build.gradle.kts" | head -n 1 | xargs dirname)
-          
-          if [ -z "$GRADLE_DIR" ]; then
-            echo "❌ ERROR: No se encontró ningún archivo build.gradle dentro del ZIP."
+          GRADLE_FILE=$(find proyecto -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) | head -n 1)
+
+          if [ -n "$GRADLE_FILE" ]; then
+            PROJECT_DIR=$(dirname "$GRADLE_FILE")
+          else
+            GRADLE_FILE=$(find proyecto -type f \( \
+              -name "build.gradle" -o \
+              -name "build.gradle.kts" \
+            \) | head -n 1)
+
+            if [ -z "$GRADLE_FILE" ]; then
+              echo "::error::No se encontró un proyecto Gradle."
+              exit 1
+            fi
+
+            PROJECT_DIR=$(dirname "$GRADLE_FILE")
+          fi
+
+          echo "Proyecto encontrado en: $PROJECT_DIR"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar Gradle Wrapper
+        working-directory: ${{ steps.android.outputs.project_dir }}
+        run: |
+          if [ ! -f "gradlew" ]; then
+            echo "::error::No existe gradlew. El proyecto debe incluir Gradle Wrapper."
             exit 1
           fi
-          
-          cd "$GRADLE_DIR"
-          
-          # Corrige permisos de ejecución de scripts y genera wrapper si falta
-          if [ ! -f "./gradlew" ]; then
-            echo "-> Creando Gradle Wrapper..."
-            gradle wrapper
+
+          chmod +x gradlew
+
+      - name: Compilar APK Debug
+        working-directory: ${{ steps.android.outputs.project_dir }}
+        run: |
+          ./gradlew --no-daemon clean assembleDebug --stacktrace
+
+      - name: Verificar APK generado
+        run: |
+          mkdir -p apk-final
+
+          find proyecto -type f -path "*/build/outputs/apk/debug/*.apk" \
+            -exec cp {} apk-final/ \;
+
+          if [ -z "$(find apk-final -name '*.apk' -type f)" ]; then
+            echo "::error::No se generó ningún archivo APK."
+            exit 1
           fi
-          chmod +x ./gradlew
-          
-          # Compilación limpia
-          ./gradlew assembleDebug --stacktrace
+
+          echo "APK generado correctamente:"
+          ls -lh apk-final/
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: Radio-Premium-APK
-          path: proyecto/**/build/outputs/apk/debug/*.apk
+          path: apk-final/*.apk
+          if-no-files-found: error
+          retention-days: 14
